@@ -49,3 +49,8 @@ while True:
 
 # close the socket
 clientSocket.close()
+
+def auth_request(username, password):
+    username = input("Username: ")
+    password = input("Password: ")
+    clientSocket.sendall((f"AUT {username} {password}").encode())

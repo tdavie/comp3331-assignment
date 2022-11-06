@@ -56,6 +56,7 @@ class ClientThread(Thread):
             # use recv() to receive message from the client
             data = self.clientSocket.recv(1024)
             message = data.decode()
+            print(message)
             
             # if the message from client is empty, the client would be off-line then set the client as offline (alive=Flase)
             if message == '':
