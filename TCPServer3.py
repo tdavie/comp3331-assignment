@@ -20,6 +20,7 @@ serverAddress = (serverHost, serverPort)
 
 # define socket for the server side and bind address
 serverSocket = socket(AF_INET, SOCK_STREAM)
+serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 serverSocket.bind(serverAddress)
 
 # open credentials.txt
