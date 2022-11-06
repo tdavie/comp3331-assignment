@@ -22,6 +22,15 @@ serverAddress = (serverHost, serverPort)
 serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.bind(serverAddress)
 
+# open credentials.txt
+credentials = {}
+with open("credentials.txt") as f:
+    for line in f:
+        tup = line.rsplit(" ")
+        credentials[tup[0]] = tup[1][:-1]
+
+print(credentials)
+
 """
     Define multi-thread class for client
     This class would be used to define the instance for each connection from each client
@@ -53,21 +62,32 @@ class ClientThread(Thread):
                 self.clientAlive = False
                 print("===== the user disconnected - ", clientAddress)
                 break
+
+            # parse requests
+            parsed_message = self.parse_request(message)
             
-            # handle message from the client
-            if message == 'login':
+            # switch based on request method
+            if parsed_message["method"] == "AUT":
                 print("[recv] New login request")
-                self.process_login()
-            elif message == 'download':
-                print("[recv] Download request")
-                message = 'download filename'
-                print("[send] " + message)
-                self.clientSocket.send(message.encode())
-            else:
-                print("[recv] " + message)
-                print("[send] Cannot understand this message")
-                message = 'Cannot understand this message'
-                self.clientSocket.send(message.encode())
+                if self.process_login(parsed_message):
+                    # todo what is the appropriate response to send to a successfully authenticated client? 
+                    response = "generic welcome message"
+                    self.clientSocket.send(response.encode())
+                else:
+                    # todo what is the appropriate response to send to a unsuccessful client? 
+                    response = "generic failure message"
+                    self.clientSocket.send(response.encode())
+
+            # elif message == 'download':
+            #     print("[recv] Download request")
+            #     message = 'download filename'
+            #     print("[send] " + message)
+            #     self.clientSocket.send(message.encode())
+            # else:
+            #     print("[recv] " + message)
+            #     print("[send] Cannot understand this message")
+            #     message = 'Cannot understand this message'
+            #     self.clientSocket.send(message.encode())
     
     """
         You can create more customized APIs here, e.g., logic for processing user authentication
@@ -76,10 +96,21 @@ class ClientThread(Thread):
             message = 'user credentials request'
             self.clientSocket.send(message.encode())
     """
-    def process_login(self):
-        message = 'user credentials request'
-        print('[send] ' + message);
-        self.clientSocket.send(message.encode())
+    def process_login(message):
+        # verify credentials
+        if message["arguments"][0] in credentials:
+            if message["arguments"][1] == credentials[message["arguments"][0]]:
+                print('[send] ' + message)
+                return True
+        return False
+
+    '''
+    parses bare requests, separating the method and any content, delineated by whitespace
+    '''
+    def parse_request(rq):
+        return {"method": rq[:3], "arguments": rq.rsplit(" ")}
+        
+
 
 
 print("\n===== Server is running =====")
