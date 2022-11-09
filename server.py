@@ -9,6 +9,7 @@
 from socket import *
 from threading import Thread
 import sys, select
+from time import time
 
 MAX_LOGIN_ATTEMPTS = 10
 
@@ -39,9 +40,9 @@ print(credentials)
 # used for devices which have not yet been authenticated, keeping track of previous logins etc. to enforce rate limiting etc.
 unauthenticatedHosts = [
     {
-    "name": "testname"
-    "ip": "100.100.100.100"
-    "port": "10000"
+    "name": "testname",
+    "ip": "100.100.100.100",
+    "port": "10000",
     "isAuthenticated": False,
     "lastAuthAttempt": 0,
     "authAttemptCount": 0,
@@ -50,17 +51,17 @@ unauthenticatedHosts = [
 # once a device is authenticated, it is removed from unauthenticatedDevices and added to authenticatedDevices
 authenticatedHosts = [
     {
-    "name": "testname"
-    "ip": "100.100.100.100"
-    "port": "10000"
+    "name": "testname",
+    "ip": "100.100.100.100",
+    "port": "10000",
     }
 ]
 
 # DB Helpers
 # __________
 
-def getAuthHostByIP(IP):
-    for host, x in enumerate(unauthenticatedHosts):
+def get_host_index_by_IP(l, IP):
+    for x, host in enumerate(unauthenticatedHosts):
         if host["ip"] == IP:
             return x
     return False
@@ -69,8 +70,8 @@ def getAuthHostByIP(IP):
 
 
 # write to device log
-def device_log(log, message):
-    with open(log, "rw") as log:
+def log_write(log, message):
+    with open(log, "w") as log:
         log.write(message)
 
 """
@@ -107,51 +108,66 @@ class ClientThread(Thread):
                 break
 
             # parse requests
-            # print(message)
-            # print(type(message))
             parsed_message = self.parse_request(message)
             
             # switch based on request method
             if parsed_message["method"] == "AUT":
                 print("[recv] New login request")
 
+                # send login request to client
+                # self.clientSocket.sendall("===== Welcome, please log in =====\n".encode())
+
                 # add edge device to hosts list
-                hosts.append = {
-                    "name": parsed_message["arguments"][1]
+                unauthenticatedHosts.append({
+                    "name": parsed_message["arguments"][1],
                     "ip": self.clientAddress,
                     "port": self.clientSocket,
                     "lastAuthAttempt": 0,
                     "authAttemptCount": 0,
                     }
+                )
 
-                # update 
+                # process login
                 self.process_login(parsed_message)
-
-                # todo what is the appropriate response to send to a unsuccessful client? 
-                response = "generic failure message"
-                self.clientSocket.send(response.encode())
-    
     """
         APIs
     """
     def process_login(self, message):
-        name = message["arguments"][1]
-        while(hosts[id]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS):
+        index = get_host_index_by_IP(unauthenticatedHosts, self.clientAddress)
+        
+        # unable to find host in list
+        if not index:
+            print("unable to find host in unauthentiacted host list, this shouldn't happen...")
+            return
+        
+        while(unauthenticatedHosts[index]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS):
             if self.check_credentials(message):
                 # todo what is the appropriate response to send to a successfully authenticated client? 
                 response = "generic welcome message"
                 print('client login successful')
                 self.clientSocket.send(response.encode())
-                device_log()
+               
+                # update device log
+                log_write("edge-device-log.txt", f"{time()}; {message['arguments'][1]}")
+                
+                # remove device from unauthenticated hosts
+                del unauthenticatedHosts[index]
+                return
             else:
-                hosts[id]["authAttemptCount"] += 1
+                unauthenticatedHosts[index]["authAttemptCount"] += 1
                 # authentication failure
-                response = f"authentication failed, please try again (Attempt {hosts[id]['authAttemptCount']}/10)"
+                response = f"authentication failed, please try again (Attempt {unauthenticatedHosts[index]['authAttemptCount']}/10)"
                 self.clientSocket.send(response.encode())
                 
                 data = self.clientSocket.recv(1024)
                 message = self.parse_request(data.decode())
 
+        # todo what is the appropriate response to send to a unsuccessful client? 
+        response = "generic failure message"
+        self.clientSocket.send(response.encode())
+
+        # remove device from unauthenticated hosts
+        del unauthenticatedHosts[index]
     '''
         Edge sends file to server
     '''
@@ -223,8 +239,9 @@ class ClientThread(Thread):
         checks whether provided credentials match credentials.txt
     '''
     def check_credentials(self, message):
-        if message["arguments"][0] in credentials:
-            if message["arguments"][1] == credentials[message["arguments"][0]]:
+        print(f'{message["arguments"][1]}, {message["arguments"][2]}')
+        if message["arguments"][1] in credentials:
+            if message["arguments"][2] == credentials[message["arguments"][1]]:
                 return True
         return False
 

@@ -22,7 +22,12 @@ clientSocket = socket(AF_INET, SOCK_STREAM)
 # build connection with the server and send message to it
 clientSocket.connect(serverAddress)
 
+
+"""
+    APIs
+"""
 def auth_request():
+    print("===== Welcome, please log in =====\n")
     name = input("name: ")
     password = input("Password: ")
     clientSocket.sendall((f"AUT {name} {password}").encode())
@@ -36,10 +41,79 @@ def auth_request():
         auth_request()
     return receivedMessage
 
-while True:
+'''
+    EDG: Edge sends file to server
+'''
+def send_file(fileID, dataAmount):
+    # send response to client, wait for tcp stream
+
+    # receive file over TCP stream
+
+    # acknowledge file receipt
+    
+    pass
+
+'''
+    Server requests a file fromedge device, edge device send it over TCP 
+'''
+def handle_file_request(fileID, dataAmount):
+    # send request to client
+
+    # wait for acknowledgement from client
+
+    # wait for TCP stream
+
+    # acknowledge file receipt
+    
+    pass
+
+
+'''
+    Request server to do a computation operation (SUM, AVERAGE, MAX, MIN. SUM) on fileID
+'''
+def request_compute(fileID, computationOperation):
+
+    # send request
+
+    # wait for response
+
+    # return response
+    
+    pass
+
+'''
+    Edge device deletes a file stored on server
+'''
+def request_delete(fileID):
+    # reqeust delete file
+
+    # wait for response
+    
+    # return result
+    pass
+
+'''
+    Edge device requests a list of all other edge devics from server
+'''
+def request_list_edge_devices():
+    # read from active edge device list
+
+    # send response
+    
+    pass
+
+'''
+    Edge device requests to leave the network
+'''
+def remove_edge_device(deviceID):
+    # remove device from datastructures
+
+    # send response
+    
+    pass
+
+while True:    
     # auth
-    message = "===== Welcome, please log in =====\n"
-    clientSocket.sendall(message.encode())
     auth_request()
     
     message = input("===== Please type any messsage you want to send to server: =====\n")
