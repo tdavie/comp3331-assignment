@@ -36,8 +36,37 @@ with open("credentials.txt") as f:
 print(credentials)
 
 # define global host db for auth
-# list of dictionaries
-hosts = []
+# used for devices which have not yet been authenticated, keeping track of previous logins etc. to enforce rate limiting etc.
+unauthenticatedHosts = [
+    {
+    "name": "testname"
+    "ip": "100.100.100.100"
+    "port": "10000"
+    "isAuthenticated": False,
+    "lastAuthAttempt": 0,
+    "authAttemptCount": 0,
+    }
+]
+# once a device is authenticated, it is removed from unauthenticatedDevices and added to authenticatedDevices
+authenticatedHosts = [
+    {
+    "name": "testname"
+    "ip": "100.100.100.100"
+    "port": "10000"
+    }
+]
+
+# DB Helpers
+# __________
+
+def getAuthHostByIP(IP):
+    for host, x in enumerate(unauthenticatedHosts):
+        if host["ip"] == IP:
+            return x
+    return False
+
+
+
 
 # write to device log
 def device_log(log, message):
@@ -91,7 +120,6 @@ class ClientThread(Thread):
                     "name": parsed_message["arguments"][1]
                     "ip": self.clientAddress,
                     "port": self.clientSocket,
-                    "authenticated": False,
                     "lastAuthAttempt": 0,
                     "authAttemptCount": 0,
                     }
