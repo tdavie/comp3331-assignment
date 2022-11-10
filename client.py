@@ -27,7 +27,6 @@ clientSocket.connect(serverAddress)
     APIs
 """
 def auth_request():
-    print("===== Welcome, please log in =====\n")
     name = input("name: ")
     password = input("Password: ")
     clientSocket.sendall((f"AUT {name} {password}").encode())
@@ -118,6 +117,7 @@ def remove_edge_device(deviceID):
 
 while True:    
     # auth
+    print("===== Welcome, please log in =====\n")
     auth_request()
     
     message = input("===== Please type any messsage you want to send to server: =====\n")

@@ -9,10 +9,11 @@
 from socket import *
 from threading import Thread
 import sys, select
-import datetime
+from datetime import datetime
 
-MAX_LOGIN_ATTEMPTS = 10
+MAX_LOGIN_ATTEMPTS = 3
 CURRENT_MAX_ID = 0
+TIMEOUT_SECONDS = 10
 
 
 # acquire server host and port from command line parameter
@@ -116,15 +117,16 @@ class ClientThread(Thread):
                 # send login request to client
                 # self.clientSocket.sendall("===== Welcome, please log in =====\n".encode())
 
-                # add edge device to hosts list
-                unauthenticatedHosts.append({
-                    "name": parsed_message["arguments"][1],
+                # add edge device to hosts dict
+                global CURRENT_MAX_ID
+                unauthenticatedHosts[parsed_message["arguments"][1]] = {
+                    "id": CURRENT_MAX_ID,
                     "ip": self.clientAddress,
                     "port": self.clientSocket,
                     "lastAuthAttempt": 0,
                     "authAttemptCount": 0,
                     }
-                )
+                CURRENT_MAX_ID += 1
 
                 # process login
                 self.process_login(parsed_message)
@@ -136,19 +138,22 @@ class ClientThread(Thread):
         APIs
     """
     def process_login(self, message):
-        index = get_host_index_by_IP(unauthenticatedHosts, self.clientAddress)
+        #index = get_host_index_by_IP(unauthenticatedHosts, self.clientAddress)
         
         # unable to find host in list
-        if not index:
-            print("unable to find host in unauthentiacted host list, this shouldn't happen...")
-            return
+        # if not index:
+        #     print("unable to find host in unauthentiacted host list, this shouldn't happen...")
+        #     return
+
+        name = message["arguments"][1]
         
         # check id edge device is timed out
-        if unauthenticatedHosts[index]["authAttemptCount"] > MAX_LOGIN_ATTEMPTS:
-            if datetime.strptime(unauthenticatedHosts[index]["lastAuthAttempt"], '%b %d %Y %I:%M%p')
+        if unauthenticatedHosts[name]["authAttemptCount"] > MAX_LOGIN_ATTEMPTS:
+            if datetime.strptime(unauthenticatedHosts[name]["lastAuthAttempt"], '%b %d %Y %I:%M%p') + TIMEOUT_SECONDS < datetime.now():
+                return
             
-       
-        while unauthenticatedHosts[index]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS:
+        # login loop
+        while unauthenticatedHosts[name]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS - 1:
             if self.check_credentials(message):
                 # todo what is the appropriate response to send to a successfully authenticated client? 
                 response = "generic welcome message"
@@ -159,7 +164,7 @@ class ClientThread(Thread):
                 log_write("edge-device-log.txt", f"{datetime.now()}; {message['arguments'][1]}; {self.clientAddress}; {self.clientSocket}")
                 
                 # remove device from unauthenticated hosts
-                del unauthenticatedHosts[index]
+                del unauthenticatedHosts[name]
 
                 # listen for UDP port
                 data = self.clientSocket.recv(1024)
@@ -167,20 +172,24 @@ class ClientThread(Thread):
 
                 return port
             else:
-                unauthenticatedHosts[index]["authAttemptCount"] += 1
+                unauthenticatedHosts[name]["authAttemptCount"] += 1
                 # authentication failure
-                response = f"authentication failed, please try again (Attempt {unauthenticatedHosts[index]['authAttemptCount']}/10)"
+                response = f"authentication failed, please try again (Attempt {unauthenticatedHosts[name]['authAttemptCount']}/{MAX_LOGIN_ATTEMPTS})"
                 self.clientSocket.send(response.encode())
                 
                 data = self.clientSocket.recv(1024)
                 message = self.parse_request(data.decode())
 
         # todo what is the appropriate response to send to a unsuccessful client? 
-        response = "generic failure message"
+        response = "Authentication failed. You have been timed out for 10 seconds"
         self.clientSocket.send(response.encode())
 
+        # update timeout
+        unauthenticatedHosts[name]["lastAuthAttempt"] = datetime.now()
+        print(unauthenticatedHosts[name]["lastAuthAttempt"])
+
         # remove device from unauthenticated hosts
-        del unauthenticatedHosts[index]
+        del unauthenticatedHosts[name]
     '''
         Edge sends file to server
     '''
