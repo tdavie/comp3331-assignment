@@ -7,24 +7,39 @@
     Author: Wei Song (Tutor for COMP3331/9331)
 """
 from socket import *
-from threading import Thread
+from threading import Thread, Lock
 import sys, select, os
 from datetime import datetime
 
 
 CURRENT_MAX_AUTH_ID = 0
 CURRENT_MAX_UNAUTH_ID = 0
-TIMEOUT_SECONDS = 10
+TIMEOUT_SECONDS = 20
+
+# unauth_lock = Lock()
+# auth_lock = Lock()
 
 
 # acquire server host and port from command line parameter
 if len(sys.argv) != 3:
     print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT NUM_CONSECTUIVE_FAILED_ATTEMPTS ======\n")
     exit(0)
+
+try:
+    login = int(sys.argv[2])
+    if login < 6 and login > 0:
+        MAX_LOGIN_ATTEMPTS = login
+    else:
+        raise ValueError
+except ValueError:
+    print("\n===== Error usage, NUM_CONSECTUIVE_FAILED_ATTEMPTS must be an integer between 1 and 5 ======\n")
+    exit(0)
+
+
 serverHost = "127.0.0.1"
 serverPort = int(sys.argv[1])
 serverAddress = (serverHost, serverPort)
-MAX_LOGIN_ATTEMPTS = int(sys.argv[2])
+
 
 # define socket for the server side and bind address
 serverSocket = socket(AF_INET, SOCK_STREAM)
@@ -87,6 +102,8 @@ def updateDeviceLog(log, id):
         for line in lines:
             if int(line[:1]) > id:
                 line = str(int(line[:1])-1)+line[1:]
+            elif int(line[:1]) == id:
+                lines.remove(line)
         l.write(lines)                
 
 
@@ -136,13 +153,26 @@ class ClientThread(Thread):
 
                 # add edge device to hosts dict
                 global CURRENT_MAX_UNAUTH_ID
-                unauthenticatedHosts[parsed_message["arguments"][1]] = {
-                    "id": CURRENT_MAX_UNAUTH_ID,
-                    "ip": self.clientAddress,
-                    "port": self.clientSocket,
-                    "lastAuthAttempt": 0,
-                    "authAttemptCount": 0,
-                    }
+                global unauthenticatedHosts
+
+                name = parsed_message["arguments"][1]
+                print(unauthenticatedHosts)
+                if name not in unauthenticatedHosts:
+                    print("Hello")
+                    unauthenticatedHosts[name] = {
+                        "id": CURRENT_MAX_UNAUTH_ID,
+                        "ip": self.clientAddress,
+                        "port": self.clientSocket,
+                        "lastAuthAttempt": 0,
+                        "authAttemptCount": 0,
+                        }
+                else:
+                    unauthenticatedHosts[name] = {
+                        "id": CURRENT_MAX_UNAUTH_ID,
+                        "ip": self.clientAddress,
+                        "port": self.clientSocket,
+                        }
+
                 CURRENT_MAX_UNAUTH_ID += 1
 
                 # process login
@@ -192,6 +222,8 @@ class ClientThread(Thread):
         #     return
 
         name = message["arguments"][1]
+
+        global unauthenticatedHosts
         
         # check id edge device is timed out
         if unauthenticatedHosts[name]["authAttemptCount"] > MAX_LOGIN_ATTEMPTS:
