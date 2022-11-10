@@ -8,6 +8,8 @@
 from socket import *
 import sys
 
+NAME = None
+
 #Server would be running on the same host as Client
 if len(sys.argv) != 3:
     print("\n===== Error usage, python3 TCPClient3.py SERVER_IP SERVER_PORT ======\n")
@@ -42,24 +44,20 @@ def auth_request():
     # todo open UDP connection
     # clientSocket.sendall("AUT ")
 
-    return receivedMessage
+    return name
 
 '''
-    EDG: Edge sends file to server
+    EDG: Generate edge data
 '''
-def send_file(fileID, dataAmount):
-    # send response to client, wait for tcp stream
-
-    # receive file over TCP stream
-
-    # acknowledge file receipt
-    
-    pass
+def generate_data(name, fileID, dataAmount):
+    with open(f"{name}-{fileID}.txt", "w") as f:
+        for x in range(int(dataAmount)):
+            f.write(str(x)+'\n')
 
 '''
-    Server requests a file fromedge device, edge device send it over TCP 
+    Edge device sends data to server 
 '''
-def handle_file_request(fileID, dataAmount):
+def send_data(fileID, dataAmount):
     # send request to client
 
     # wait for acknowledgement from client
@@ -115,12 +113,24 @@ def remove_edge_device(deviceID):
     
     pass
 
+def parse_request(rq):
+        return {"method": rq[:3], "arguments": rq.rsplit(" ")}
+
+
 while True:    
     # auth
-    print("===== Welcome, please log in =====\n")
-    auth_request()
+    while NAME is None:
+        print("===== Welcome, please log in =====\n")
+        NAME = auth_request()
+
+    # main command loop
+    message = input("===== Please enter a command: =====\n")    
+    parsed_rq = parse_request(message)
+    print(parsed_rq)
     
-    message = input("===== Please type any messsage you want to send to server: =====\n")
+    if parsed_rq["method"] == "EDG":
+        generate_data(NAME, parsed_rq["arguments"][1], parsed_rq["arguments"][2])
+        print(f"===== Succesfully generated data of length {parsed_rq['arguments'][2]} =====")
     clientSocket.sendall(message.encode())
 
     # receive response from the server
