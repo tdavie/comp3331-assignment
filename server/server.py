@@ -140,6 +140,13 @@ class ClientThread(Thread):
                 print(f"[recv] New file upload request from {clientAddress}")
                 self.receive_file(parsed_message["arguments"][1])
 
+            # SCS
+            elif parsed_message["method"] == "SCS":
+                print(f"[recv] New compute request from {clientAddress}")
+                error = self.do_compute(parsed_message["arguments"][1], parsed_message["arguments"][2])
+                if error:
+                    print(f"ERROR: {error} while performing compute request from {clientAddress}")
+
     """
         APIs
     """
@@ -161,7 +168,7 @@ class ClientThread(Thread):
         # login loop
         while unauthenticatedHosts[name]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS - 1:
             if self.check_credentials(message):
-                response = "===== Welcome! ====="
+                response = "\n===== Welcome! ====="
                 print('client login successful')
                 self.clientSocket.send(response.encode())
                
@@ -228,12 +235,40 @@ class ClientThread(Thread):
     '''
         Request server to do a computation operation (SUM, AVERAGE, MAX, MIN. SUM) on fileID
     '''
-    def do_compute(fileID, computationOperation):
+    def do_compute(self, fileID, computationOperation):
+        # open file, parse numbers
+        hostname = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
+        nums = []
+        print(f"{hostname}-{fileID}.txt")
+        try:
+            with open(f"{hostname}-{fileID}.txt", "r") as f:
+                for l in f.readlines():
+                    nums.append(int(l))
+        except Exception as e:
+            return e
+        
         # do compute
+        result = None
+        print(computationOperation)
+        if computationOperation == "SUM":
+            result = sum(nums)
+        elif computationOperation == "AVERAGE":
+            result = sum(nums)/len(nums)
+        elif computationOperation == "MAX":
+            result = max(nums)
+        elif computationOperation == "MIN":
+            result = min(nums)
+        
+        print(result)
 
         # send response
-        
-        pass
+        if result != None:
+            self.clientSocket.sendall(f"SCS {fileID} OK {result}".encode())
+            print(f"[send] Sent compute result to {clientAddress}")
+        else:
+            self.clientSocket.sendall(f"SCS {fileID} FAIL".encode())
+            print(f"[send] Sent error in compute result to {clientAddress}")
+        return False
 
     '''
         Edge device deletes a file stored on server

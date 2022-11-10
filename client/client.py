@@ -87,9 +87,7 @@ def send_data(name, fileID):
             print("File sent successfully")
         else:
             print("Server reported error receiving file!")
-
     except Exception as e:
-        
         return e
     
 '''
@@ -101,11 +99,14 @@ def request_compute(fileID, computationOperation):
 
     # wait for response
     data = clientSocket.recv(1024)
-    receivedMessage = data.decode()
-
-    # wait for response
+    receivedMessage = parse_request(data.decode())
 
     # return response
+    print(receivedMessage)
+    if receivedMessage["arguments"][2] == "OK":
+        print(f'result: {receivedMessage["arguments"][3]}')
+    else:
+        return False
     
     pass
 
@@ -183,28 +184,41 @@ while True:
             print(f'ERROR: "{error}", while uploading file')
         else:
             print(f"===== Succesfully uploaded file {fileID} =====")
+    elif parsed_rq["method"] == "SCS":
+        if len(parsed_rq["arguments"]) < 3:
+            print("Incorrect arguments supplied for operation SCS!")
+        
+        fileID = parsed_rq["arguments"][1]
+        computationOperation = parsed_rq["arguments"][2]
+        
+        # run request
+        error = request_compute(fileID, computationOperation)
+
+        # error handling
+        if error:
+            print(f'ERROR: "{error}", while requesting compute')
 
 
     # receive response from the server
     # 1024 is a suggested packet size, you can specify it as 2048 or others
-    data = clientSocket.recv(1024)
-    receivedMessage = data.decode()
+    # data = clientSocket.recv(1024)
+    # receivedMessage = data.decode()
 
     # parse the message received from server and take corresponding actions
-    if receivedMessage == "":
-        print("[recv] Message from server is empty!")
-    elif receivedMessage == "user credentials request":
-        print("[recv] You need to provide name and password to login")
-    elif receivedMessage == "download filename":
-        print("[recv] You need to provide the file name you want to download")
-    else:
-        print("[recv] Message makes no sense")
+    # if receivedMessage == "":
+    #     print("[recv] Message from server is empty!")
+    # elif receivedMessage == "user credentials request":
+    #     print("[recv] You need to provide name and password to login")
+    # elif receivedMessage == "download filename":
+    #     print("[recv] You need to provide the file name you want to download")
+    # else:
+    #     print("[recv] Message makes no sense")
         
-    ans = input('\nDo you want to continue(y/n) :')
-    if ans == 'y':
-        continue
-    else:
-        break
+    # ans = input('\nDo you want to continue(y/n) :')
+    # if ans == 'y':
+    #     continue
+    # else:
+    #     break
 
 # close the socket
 clientSocket.close()
