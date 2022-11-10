@@ -39,6 +39,10 @@ def auth_request():
     # todo this should be more robust
     if "please try again" in receivedMessage:
         auth_request()
+
+    # todo open UDP connection
+    # clientSocket.sendall("AUT ")
+
     return receivedMessage
 
 '''

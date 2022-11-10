@@ -9,9 +9,10 @@
 from socket import *
 from threading import Thread
 import sys, select
-from time import time
+import datetime
 
 MAX_LOGIN_ATTEMPTS = 10
+CURRENT_MAX_ID = 0
 
 
 # acquire server host and port from command line parameter
@@ -38,36 +39,33 @@ print(credentials)
 
 # define global host db for auth
 # used for devices which have not yet been authenticated, keeping track of previous logins etc. to enforce rate limiting etc.
-unauthenticatedHosts = [
-    {
-    "name": "testname",
-    "ip": "100.100.100.100",
-    "port": "10000",
-    "isAuthenticated": False,
-    "lastAuthAttempt": 0,
-    "authAttemptCount": 0,
+unauthenticatedHosts = {
+    "device-name": {
+        "id": 0,
+        "ip": "100.100.100.100",
+        "port": "10000",
+        "isAuthenticated": False,
+        "lastAuthAttempt": 0,
+        "authAttemptCount": 0,
     }
-]
+}
 # once a device is authenticated, it is removed from unauthenticatedDevices and added to authenticatedDevices
-authenticatedHosts = [
-    {
-    "name": "testname",
-    "ip": "100.100.100.100",
-    "port": "10000",
+authenticatedHosts = {
+    "device-name": {
+        "id": 0,
+        "ip": "100.100.100.100",
+        "port": "10000"
     }
-]
+}
 
 # DB Helpers
 # __________
 
-def get_host_index_by_IP(l, IP):
-    for x, host in enumerate(unauthenticatedHosts):
-        if host["ip"] == IP:
-            return x
-    return False
-
-
-
+# def get_host_index_by_IP(l, IP):
+#     for x, host in enumerate(unauthenticatedHosts):
+#         if host["ip"] == IP:
+#             return x
+#     return False
 
 # write to device log
 def log_write(log, message):
@@ -111,6 +109,7 @@ class ClientThread(Thread):
             parsed_message = self.parse_request(message)
             
             # switch based on request method
+            # AUT
             if parsed_message["method"] == "AUT":
                 print("[recv] New login request")
 
@@ -129,6 +128,10 @@ class ClientThread(Thread):
 
                 # process login
                 self.process_login(parsed_message)
+            # EDG
+            elif parsed_message["method"] == "EDG":
+                print("[recv] New file upload request from ")
+
     """
         APIs
     """
@@ -140,7 +143,12 @@ class ClientThread(Thread):
             print("unable to find host in unauthentiacted host list, this shouldn't happen...")
             return
         
-        while(unauthenticatedHosts[index]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS):
+        # check id edge device is timed out
+        if unauthenticatedHosts[index]["authAttemptCount"] > MAX_LOGIN_ATTEMPTS:
+            if datetime.strptime(unauthenticatedHosts[index]["lastAuthAttempt"], '%b %d %Y %I:%M%p')
+            
+       
+        while unauthenticatedHosts[index]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS:
             if self.check_credentials(message):
                 # todo what is the appropriate response to send to a successfully authenticated client? 
                 response = "generic welcome message"
@@ -148,11 +156,16 @@ class ClientThread(Thread):
                 self.clientSocket.send(response.encode())
                
                 # update device log
-                log_write("edge-device-log.txt", f"{time()}; {message['arguments'][1]}")
+                log_write("edge-device-log.txt", f"{datetime.now()}; {message['arguments'][1]}; {self.clientAddress}; {self.clientSocket}")
                 
                 # remove device from unauthenticated hosts
                 del unauthenticatedHosts[index]
-                return
+
+                # listen for UDP port
+                data = self.clientSocket.recv(1024)
+                port = int(data.decode())
+
+                return port
             else:
                 unauthenticatedHosts[index]["authAttemptCount"] += 1
                 # authentication failure
