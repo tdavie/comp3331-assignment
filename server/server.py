@@ -73,8 +73,22 @@ def get_host_name_by_IP(hosts, IP):
 
 # write to device log
 def log_write(log, message):
-    with open(log, "w") as log:
-        log.write(message)
+    with open(log, "a") as l:
+        l.write(message+'\n')
+
+def updateDeviceID(id):
+    for host in authenticatedHosts:
+        if host["id"] > id:
+            host["id"] -= 1
+
+def updateDeviceLog(log, id):
+    with open(log, "w") as l:
+        lines = l.readlines()
+        for line in lines:
+            if int(line[:1]) > id:
+                line = str(int(line[:1])-1)+line[1:]
+        l.write(lines)                
+
 
 """
     Define multi-thread class for client
@@ -154,6 +168,18 @@ class ClientThread(Thread):
                 if error:
                     print(f"ERROR: {error} while performing delete request from {clientAddress}")
 
+            # AED
+            elif parsed_message["method"] == "AED":
+                print(f"[recv] New list request from {clientAddress}")
+                self.list_edge_devices()
+            
+            # OUT
+            elif parsed_message["method"] == "OUT":
+                print(f"[recv] New list request from {clientAddress}")
+                error = self.list_edge_devices()
+                if error:
+                    print(f"ERROR: {error} while performing out request from {clientAddress}")
+
     """
         APIs
     """
@@ -179,18 +205,22 @@ class ClientThread(Thread):
                 print('client login successful')
                 self.clientSocket.send(response.encode())
                
-                # update device log
-                log_write("edge-device-log.txt", f"{datetime.now()}; {message['arguments'][1]}; {self.clientAddress}; {self.clientSocket}")
-                
                 # remove device from unauthenticated hosts
                 del unauthenticatedHosts[name]
 
                 # add device to authenticated hosts
+                global CURRENT_MAX_AUTH_ID
                 authenticatedHosts[name] = {
                     "id": CURRENT_MAX_AUTH_ID,
                     "ip": self.clientAddress,
                     "port": self.clientSocket
                 }
+
+                CURRENT_MAX_AUTH_ID += 1
+
+                # update device log
+                log_write("edge-device-log.txt", f"{authenticatedHosts[name]['id']}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {message['arguments'][1]}; {self.clientAddress[0]}; {self.clientAddress[1]}")
+                
 
                 # listen for UDP port
                 # data = self.clientSocket.recv(1024)
@@ -219,7 +249,7 @@ class ClientThread(Thread):
     '''
         Edge sends file to server
     '''
-    def receive_file(self, fileID):
+    def receive_file(self, fileID, dataAmount):
         # send response to client, wait for tcp stream
         self.clientSocket.sendall(f"UED {fileID}".encode())
 
@@ -228,8 +258,9 @@ class ClientThread(Thread):
         file = data.decode()
 
         # write file
+        name = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
         try:
-            with open(f"{get_host_name_by_IP(authenticatedHosts, self.clientAddress)}-{fileID}.txt", "w") as f:
+            with open(f"{name}-{fileID}.txt", "w") as f:
                 f.write(file)
         except Exception as e:
             print(f"ERROR: {e} while writing to file")
@@ -237,6 +268,9 @@ class ClientThread(Thread):
 
         # acknowledge file receipt
         self.clientSocket.sendall(f"UED {fileID} OK".encode())
+
+        # log file upload
+        log_write("upload-log.txt", f"{name}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {fileID}; {sum(1 for line in file)}")
         
     
     '''
@@ -283,8 +317,10 @@ class ClientThread(Thread):
     def delete(self, fileID):
         # delete file
         hostname = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
-        #print(f"{hostname}-{fileID}.txt")
+        dataAmount = 0
         try:
+            with open(f"{hostname}-{fileID}.txt") as f:
+                dataAmount = sum(1 for line in f)
             os.remove(f"{hostname}-{fileID}.txt")
         except Exception as e:
             self.clientSocket.sendall(f"DTE {fileID} FAIL".encode())
@@ -293,28 +329,38 @@ class ClientThread(Thread):
         # send response
         self.clientSocket.sendall(f"SCS {fileID} OK".encode())
         print(f"[send] Sent acknowledgement of deleting file with fileID '{fileID}' to {clientAddress}")
+
+        # log delete
+        log_write("deletion-log.txt", f"{hostname}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {fileID}; {dataAmount}")
         
         return False
 
     '''
         Edge device requests a list of all other edge devics from server
     '''
-    def list_edge_devices():
-        # read from active edge device list
-
+    def list_edge_devices(self):
         # send response
-        
-        pass
-
+        self.clientSocket.sendall(f"AED {authenticatedHosts}".encode())
+        return
+   
     '''
         Edge device requests to leave the network
     '''
-    def remove_edge_device(deviceID):
+    def remove_edge_device(self, deviceName):
         # remove device from datastructures
+        try:
+            # update deviceID to keep number sequence continuous
+            id = authenticatedHosts[deviceName]
+            updateDeviceID(id)
 
-        # send response
-        
-        pass
+            # update log file
+            updateDeviceLog(id)
+
+            del authenticatedHosts[deviceName]
+
+            return False
+        except Exception as e:
+            return e
     
     '''
         checks whether provided credentials match credentials.txt

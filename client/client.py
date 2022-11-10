@@ -131,21 +131,36 @@ def request_delete(fileID):
     Edge device requests a list of all other edge devics from server
 '''
 def request_list_edge_devices():
-    # read from active edge device list
+    # send request
+    clientSocket.sendall("AED".encode())
 
-    # send response
+    # get response
+    data = clientSocket.recv(2048)
+    receivedMessage = parse_request(data.decode())
+
+    if len(receivedMessage < 5):
+        print("No other active edge devices")
+    else:
+        print(receivedMessage)
     
-    pass
 
 '''
     Edge device requests to leave the network
 '''
 def remove_edge_device(deviceID):
     # remove device from datastructures
+    clientSocket.sendall("OUT".encode())
 
-    # send response
-    
-    pass
+    # get response
+    data = clientSocket.recv(1024)
+    receivedMessage = parse_request(data.decode())
+
+    if "OUT" in receivedMessage:
+        print("Disconnected from server")
+        return False
+    else:
+        print("Failed to disconnect from server")
+        return True
 
 def parse_request(rq):
         return {"method": rq[:3], "arguments": rq.rsplit(" ")}
@@ -217,6 +232,22 @@ while True:
         # error handling
         if error:
             print(f'ERROR: "{error}", while requesting delete')
+
+    elif parsed_rq["method"] == "AED":
+        # run request
+        error = request_list_edge_devices()
+
+        # error handling
+        if error:
+            print(f'ERROR: "{error}", while requesting edge devices list')
+
+    elif parsed_rq["method"] == "OUT":
+        # run request
+        error = remove_edge_device()
+
+        # error handling
+        if error:
+            print(f'ERROR: "{error}", while requesting edge devices list')
 
 
     # receive response from the server
