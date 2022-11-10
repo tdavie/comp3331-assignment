@@ -8,7 +8,7 @@
 """
 from socket import *
 from threading import Thread
-import sys, select
+import sys, select, os
 from datetime import datetime
 
 
@@ -147,6 +147,13 @@ class ClientThread(Thread):
                 if error:
                     print(f"ERROR: {error} while performing compute request from {clientAddress}")
 
+            # DTE
+            elif parsed_message["method"] == "DTE":
+                print(f"[recv] New delete request from {clientAddress}")
+                error = self.delete(parsed_message["arguments"][1])
+                if error:
+                    print(f"ERROR: {error} while performing delete request from {clientAddress}")
+
     """
         APIs
     """
@@ -273,12 +280,21 @@ class ClientThread(Thread):
     '''
         Edge device deletes a file stored on server
     '''
-    def delete(fileID):
+    def delete(self, fileID):
         # delete file
-
+        hostname = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
+        #print(f"{hostname}-{fileID}.txt")
+        try:
+            os.remove(f"{hostname}-{fileID}.txt")
+        except Exception as e:
+            self.clientSocket.sendall(f"DTE {fileID} FAIL".encode())
+            print(f"[send] Sent error in deleting file to {clientAddress}")
+            return e
         # send response
+        self.clientSocket.sendall(f"SCS {fileID} OK".encode())
+        print(f"[send] Sent acknowledgement of deleting file with fileID '{fileID}' to {clientAddress}")
         
-        pass
+        return False
 
     '''
         Edge device requests a list of all other edge devics from server

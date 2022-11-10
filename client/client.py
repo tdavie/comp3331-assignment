@@ -108,18 +108,24 @@ def request_compute(fileID, computationOperation):
     else:
         return False
     
-    pass
 
 '''
     Edge device deletes a file stored on server
 '''
 def request_delete(fileID):
-    # reqeust delete file
+    # send request
+    clientSocket.sendall((f"DTE {fileID}").encode())
 
     # wait for response
-    
-    # return result
-    pass
+    data = clientSocket.recv(1024)
+    receivedMessage = parse_request(data.decode())
+
+    # return response
+    if receivedMessage["arguments"][2] == "OK":
+        print(f'Deleted file "{receivedMessage["arguments"][1]}" successfully')
+    else:
+        print(f'Server failed to delete file "{receivedMessage["arguments"][1]}"')
+        return False
 
 '''
     Edge device requests a list of all other edge devics from server
@@ -184,6 +190,7 @@ while True:
             print(f'ERROR: "{error}", while uploading file')
         else:
             print(f"===== Succesfully uploaded file {fileID} =====")
+    
     elif parsed_rq["method"] == "SCS":
         if len(parsed_rq["arguments"]) < 3:
             print("Incorrect arguments supplied for operation SCS!")
@@ -197,6 +204,19 @@ while True:
         # error handling
         if error:
             print(f'ERROR: "{error}", while requesting compute')
+
+    elif parsed_rq["method"] == "DTE":
+        if len(parsed_rq["arguments"]) < 2:
+            print("Incorrect arguments supplied for operation SCS!")
+
+        fileID = parsed_rq["arguments"][1]
+        
+        # run request
+        error = request_delete(fileID)
+
+        # error handling
+        if error:
+            print(f'ERROR: "{error}", while requesting delete')
 
 
     # receive response from the server
