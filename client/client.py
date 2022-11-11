@@ -1,13 +1,13 @@
 """
-    Python 3
     Usage: python3 TCPClient3.py localhost 12000
-    coding: utf-8
 
     Thomas Davie z5263970, adapted from example code from:
     Wei Song (Tutor for COMP3331/9331)
 """
+import json
 from socket import *
 import sys
+
 
 NAME = None
 
@@ -30,7 +30,7 @@ clientSocket.connect(serverAddress)
     APIs
 """
 def auth_request():
-    name = input("name: ")
+    name = input("Name: ")
     password = input("Password: ")
     clientSocket.sendall((f"AUT {name} {password}").encode())
 
@@ -68,9 +68,7 @@ def send_data(name, fileID):
         file = b''
         with open(f"{name}-{fileID}.txt", "rb") as f:
             file = f.read()
-            print(file)
 
-        print(f"{name}-{fileID}.txt")
         # send intiial message to server
         clientSocket.sendall((f"UED {fileID}").encode())
 
@@ -136,12 +134,13 @@ def request_list_edge_devices():
 
     # get response
     data = clientSocket.recv(2048)
-    receivedMessage = parse_request(data.decode())
+    receivedMessage = data.decode()
 
-    if len(receivedMessage < 5):
+    if len(receivedMessage) < 5:
         print("No other active edge devices")
+        print(json.dumps(receivedMessage[4:], indent=2))
     else:
-        print(receivedMessage)
+        print(json.dumps(receivedMessage[4:], indent=2))
     
 
 '''

@@ -1,10 +1,8 @@
 """
-    Sample code for Multi-Threaded Server
-    Python 3
-    Usage: python3 TCPserver3.py localhost 12000
-    coding: utf-8
+    Usage: python3 TCPserver3.py localhost 12000 3
     
-    Author: Wei Song (Tutor for COMP3331/9331)
+    Thomas Davie z5263970, adapted from example code from:
+    Wei Song (Tutor for COMP3331/9331)
 """
 from socket import *
 from threading import Thread, Lock
@@ -16,8 +14,12 @@ CURRENT_MAX_AUTH_ID = 0
 CURRENT_MAX_UNAUTH_ID = 0
 TIMEOUT_SECONDS = 20
 
-# unauth_lock = Lock()
-# auth_lock = Lock()
+# unauthenticated hosts lock
+unauth_lock = Lock()
+# authenticated hosts lock
+auth_lock = Lock()
+# shared lock for file io
+io_lock = Lock()
 
 
 # acquire server host and port from command line parameter
@@ -57,22 +59,22 @@ with open("credentials.txt") as f:
 # define global host db for auth
 # used for devices which have not yet been authenticated, keeping track of previous logins etc. to enforce rate limiting etc.
 unauthenticatedHosts = {
-    "device-name": {
-        "id": 0,
-        "ip": "100.100.100.100",
-        "port": "10000",
-        "isAuthenticated": False,
-        "lastAuthAttempt": 0,
-        "authAttemptCount": 0,
-    }
+    # "device-name": {
+    #     "id": 0,
+    #     "ip": "100.100.100.100",
+    #     "port": "10000",
+    #     "isAuthenticated": False,
+    #     "lastAuthAttempt": 0,
+    #     "authAttemptCount": 0,
+    # }
 }
 # once a device is authenticated, it is removed from unauthenticatedDevices and added to authenticatedDevices
 authenticatedHosts = {
-    "device-name": {
-        "id": 0,
-        "ip": "100.100.100.100",
-        "port": "10000"
-    }
+    # "device-name": {
+    #     "id": 0,
+    #     "ip": "100.100.100.100",
+    #     "port": "10000"
+    # }
 }
 
 # DB Helpers
@@ -105,7 +107,6 @@ def updateDeviceLog(log, id):
             elif int(line[:1]) == id:
                 lines.remove(line)
         l.write(lines)                
-
 
 """
     Define multi-thread class for client
@@ -147,9 +148,10 @@ class ClientThread(Thread):
             # AUT
             if parsed_message["method"] == "AUT":
                 print("[recv] New login request")
-
-                # send login request to client
-                # self.clientSocket.sendall("===== Welcome, please log in =====\n".encode())
+                
+                # get lock
+                unauth_lock.acquire()
+                auth_lock.acquire()
 
                 # add edge device to hosts dict
                 global CURRENT_MAX_UNAUTH_ID
@@ -177,6 +179,10 @@ class ClientThread(Thread):
 
                 # process login
                 self.process_login(parsed_message)
+
+                # release lock
+                unauth_lock.release()
+                auth_lock.release()
 
 
             # UED
@@ -224,14 +230,14 @@ class ClientThread(Thread):
         name = message["arguments"][1]
 
         global unauthenticatedHosts
-        
+
         # check id edge device is timed out
         if unauthenticatedHosts[name]["authAttemptCount"] > MAX_LOGIN_ATTEMPTS:
             if datetime.strptime(unauthenticatedHosts[name]["lastAuthAttempt"], '%b %d %Y %I:%M%p') + TIMEOUT_SECONDS < datetime.now():
                 return
             
         # login loop
-        while unauthenticatedHosts[name]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS - 1:
+        while unauthenticatedHosts[name]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS:
             if self.check_credentials(message):
                 response = "\n===== Welcome! ====="
                 print('client login successful')
@@ -252,42 +258,44 @@ class ClientThread(Thread):
 
                 # update device log
                 log_write("edge-device-log.txt", f"{authenticatedHosts[name]['id']}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {message['arguments'][1]}; {self.clientAddress[0]}; {self.clientAddress[1]}")
-                
-
-                # listen for UDP port
-                # data = self.clientSocket.recv(1024)
-                # port = int(data.decode())
 
                 return
             else:
                 unauthenticatedHosts[name]["authAttemptCount"] += 1
-                # authentication failure
-                response = f"authentication failed, please try again (Attempt {unauthenticatedHosts[name]['authAttemptCount']}/{MAX_LOGIN_ATTEMPTS})"
-                self.clientSocket.send(response.encode())
                 
-                data = self.clientSocket.recv(1024)
-                message = self.parse_request(data.decode())
+                
+                if unauthenticatedHosts[name]['authAttemptCount'] < MAX_LOGIN_ATTEMPTS:
+                    # authentication failure
+                    response = f"authentication failed, please try again (Attempt {unauthenticatedHosts[name]['authAttemptCount']}/{MAX_LOGIN_ATTEMPTS})"
+                    self.clientSocket.send(response.encode())
+                    
+                    data = self.clientSocket.recv(1024)
+                    message = self.parse_request(data.decode())
+                    continue
 
-        # todo what is the appropriate response to send to a unsuccessful client? 
-        response = "Authentication failed. You have been timed out for 10 seconds"
-        self.clientSocket.send(response.encode())
+                response = "Authentication failed. You have been timed out for 10 seconds"
+                self.clientSocket.send(response.encode())
 
-        # update timeout
-        unauthenticatedHosts[name]["lastAuthAttempt"] = datetime.now()
-        print(unauthenticatedHosts[name]["lastAuthAttempt"])
+                # update timeout
+                unauthenticatedHosts[name]["lastAuthAttempt"] = datetime.now()
+                print(unauthenticatedHosts[name]["lastAuthAttempt"])
 
-        # remove device from unauthenticated hosts
-        del unauthenticatedHosts[name]
+                # remove device from unauthenticated hosts
+                del unauthenticatedHosts[name]
     '''
         Edge sends file to server
     '''
-    def receive_file(self, fileID, dataAmount):
+    def receive_file(self, fileID):
         # send response to client, wait for tcp stream
         self.clientSocket.sendall(f"UED {fileID}".encode())
 
         # receive file over TCP stream
         data = self.clientSocket.recv(2048)
         file = data.decode()
+
+        # locks
+        auth_lock.acquire()
+        io_lock.acquire()
 
         # write file
         name = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
@@ -304,12 +312,18 @@ class ClientThread(Thread):
         # log file upload
         log_write("upload-log.txt", f"{name}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {fileID}; {sum(1 for line in file)}")
         
+        auth_lock.release()
+        io_lock.release()
     
     '''
         Request server to do a computation operation (SUM, AVERAGE, MAX, MIN. SUM) on fileID
     '''
     def do_compute(self, fileID, computationOperation):
         # open file, parse numbers
+
+        auth_lock.acquire()
+        io_lock.acquire()
+
         hostname = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
         nums = []
         print(f"{hostname}-{fileID}.txt")
@@ -319,6 +333,9 @@ class ClientThread(Thread):
                     nums.append(int(l))
         except Exception as e:
             return e
+
+        auth_lock.release()
+        io_lock.release()
         
         # do compute
         result = None
@@ -348,6 +365,10 @@ class ClientThread(Thread):
     '''
     def delete(self, fileID):
         # delete file
+        
+        auth_lock.acquire()
+        io_lock.acquire()
+        
         hostname = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
         dataAmount = 0
         try:
@@ -365,6 +386,9 @@ class ClientThread(Thread):
         # log delete
         log_write("deletion-log.txt", f"{hostname}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {fileID}; {dataAmount}")
         
+        auth_lock.release()
+        io_lock.release()
+
         return False
 
     '''
@@ -372,7 +396,9 @@ class ClientThread(Thread):
     '''
     def list_edge_devices(self):
         # send response
+        auth_lock.acquire()
         self.clientSocket.sendall(f"AED {authenticatedHosts}".encode())
+        auth_lock.release()
         return
    
     '''
@@ -380,6 +406,8 @@ class ClientThread(Thread):
     '''
     def remove_edge_device(self, deviceName):
         # remove device from datastructures
+        auth_lock.acquire()
+        io_lock.acquire()
         try:
             # update deviceID to keep number sequence continuous
             id = authenticatedHosts[deviceName]
@@ -390,9 +418,16 @@ class ClientThread(Thread):
 
             del authenticatedHosts[deviceName]
 
-            return False
         except Exception as e:
+            auth_lock.release()
+            io_lock.release()
+            
             return e
+
+        auth_lock.release()
+        io_lock.release()
+
+        return False
     
     '''
         checks whether provided credentials match credentials.txt
