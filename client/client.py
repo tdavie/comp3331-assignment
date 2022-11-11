@@ -100,11 +100,10 @@ def request_compute(fileID, computationOperation):
     receivedMessage = parse_request(data.decode())
 
     # return response
-    print(receivedMessage)
     if receivedMessage["arguments"][2] == "OK":
         print(f'result: {receivedMessage["arguments"][3]}')
     else:
-        return False
+        return True
     
 
 '''
@@ -136,29 +135,25 @@ def request_list_edge_devices():
     data = clientSocket.recv(2048)
     receivedMessage = data.decode()
 
-    if len(receivedMessage) < 5:
-        print("No other active edge devices")
-        print(json.dumps(receivedMessage[4:], indent=2))
-    else:
-        print(json.dumps(receivedMessage[4:], indent=2))
+    print(json.dumps(receivedMessage[4:], indent=2))
     
 
 '''
     Edge device requests to leave the network
 '''
-def remove_edge_device(deviceID):
+def remove_edge_device():
     # remove device from datastructures
     clientSocket.sendall("OUT".encode())
 
     # get response
     data = clientSocket.recv(1024)
-    receivedMessage = parse_request(data.decode())
+    receivedMessage = data.decode()
 
     if "OUT" in receivedMessage:
         print("Disconnected from server")
         return False
     else:
-        print("Failed to disconnect from server")
+        print("Something went wrong while trying to disconnect from server. Exiting anyway...")
         return True
 
 def parse_request(rq):
@@ -174,12 +169,14 @@ while True:
     # main command loop
     message = input("===== Please enter a command: =====\n")    
     parsed_rq = parse_request(message)
-    print(parsed_rq)
     
     # exit
     if parsed_rq["method"] == "exit":
+        # close the socket
+        clientSocket.close()
         sys.exit()
 
+    # EDG
     elif parsed_rq["method"] == "EDG":
         fileID = parsed_rq["arguments"][1]
         dataAmount = parsed_rq["arguments"][2]
@@ -193,6 +190,7 @@ while True:
         else:
             print(f"===== Succesfully generated data of length {dataAmount} =====")
 
+    # UED
     elif parsed_rq["method"] == "UED":
         fileID = parsed_rq["arguments"][1]
         
@@ -205,6 +203,7 @@ while True:
         else:
             print(f"===== Succesfully uploaded file {fileID} =====")
     
+    # SCS
     elif parsed_rq["method"] == "SCS":
         if len(parsed_rq["arguments"]) < 3:
             print("Incorrect arguments supplied for operation SCS!")
@@ -219,6 +218,7 @@ while True:
         if error:
             print(f'ERROR: "{error}", while requesting compute')
 
+    # DTE
     elif parsed_rq["method"] == "DTE":
         if len(parsed_rq["arguments"]) < 2:
             print("Incorrect arguments supplied for operation SCS!")
@@ -232,6 +232,7 @@ while True:
         if error:
             print(f'ERROR: "{error}", while requesting delete')
 
+    # AED
     elif parsed_rq["method"] == "AED":
         # run request
         error = request_list_edge_devices()
@@ -240,35 +241,16 @@ while True:
         if error:
             print(f'ERROR: "{error}", while requesting edge devices list')
 
+    # OUT
     elif parsed_rq["method"] == "OUT":
         # run request
         error = remove_edge_device()
 
         # error handling
         if error:
-            print(f'ERROR: "{error}", while requesting edge devices list')
+            print(f'ERROR: "{error}", while requesting OUT')
 
+        # close the socket
+        clientSocket.close()
+        sys.exit()
 
-    # receive response from the server
-    # 1024 is a suggested packet size, you can specify it as 2048 or others
-    # data = clientSocket.recv(1024)
-    # receivedMessage = data.decode()
-
-    # parse the message received from server and take corresponding actions
-    # if receivedMessage == "":
-    #     print("[recv] Message from server is empty!")
-    # elif receivedMessage == "user credentials request":
-    #     print("[recv] You need to provide name and password to login")
-    # elif receivedMessage == "download filename":
-    #     print("[recv] You need to provide the file name you want to download")
-    # else:
-    #     print("[recv] Message makes no sense")
-        
-    # ans = input('\nDo you want to continue(y/n) :')
-    # if ans == 'y':
-    #     continue
-    # else:
-    #     break
-
-# close the socket
-clientSocket.close()

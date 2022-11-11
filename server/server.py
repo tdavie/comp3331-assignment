@@ -81,8 +81,6 @@ authenticatedHosts = {
 # __________
 
 def get_host_name_by_IP(hosts, IP):
-    # print(hosts)
-    # print(IP)
     for key, val in hosts.items():
         if val["ip"] == IP:
             return key
@@ -94,7 +92,9 @@ def log_write(log, message):
         l.write(message+'\n')
 
 def updateDeviceID(id):
-    for host in authenticatedHosts:
+    for hostname, hostinfo in authenticatedHosts:
+        print(hostname)
+        print(hostinfo)
         if host["id"] > id:
             host["id"] -= 1
 
@@ -133,8 +133,7 @@ class ClientThread(Thread):
             # use recv() to receive message from the client
             data = self.clientSocket.recv(1024)
             message = data.decode()
-            print(message)
-            
+
             # if the message from client is empty, the client would be off-line then set the client as offline (alive=Flase)
             if message == '':
                 self.clientAlive = False
@@ -158,9 +157,8 @@ class ClientThread(Thread):
                 global unauthenticatedHosts
 
                 name = parsed_message["arguments"][1]
-                print(unauthenticatedHosts)
+
                 if name not in unauthenticatedHosts:
-                    print("Hello")
                     unauthenticatedHosts[name] = {
                         "id": CURRENT_MAX_UNAUTH_ID,
                         "ip": self.clientAddress,
@@ -211,8 +209,8 @@ class ClientThread(Thread):
             
             # OUT
             elif parsed_message["method"] == "OUT":
-                print(f"[recv] New list request from {clientAddress}")
-                error = self.list_edge_devices()
+                print(f"[recv] New removal request from {clientAddress}")
+                error = self.remove_edge_device()
                 if error:
                     print(f"ERROR: {error} while performing out request from {clientAddress}")
 
@@ -220,13 +218,6 @@ class ClientThread(Thread):
         APIs
     """
     def process_login(self, message):
-        #index = get_host_index_by_IP(unauthenticatedHosts, self.clientAddress)
-        
-        # unable to find host in list
-        # if not index:
-        #     print("unable to find host in unauthentiacted host list, this shouldn't happen...")
-        #     return
-
         name = message["arguments"][1]
 
         global unauthenticatedHosts
@@ -240,7 +231,7 @@ class ClientThread(Thread):
         while unauthenticatedHosts[name]["authAttemptCount"] < MAX_LOGIN_ATTEMPTS:
             if self.check_credentials(message):
                 response = "\n===== Welcome! ====="
-                print('client login successful')
+                print('===== Client login successful =====')
                 self.clientSocket.send(response.encode())
                
                 # remove device from unauthenticated hosts
@@ -278,7 +269,7 @@ class ClientThread(Thread):
 
                 # update timeout
                 unauthenticatedHosts[name]["lastAuthAttempt"] = datetime.now()
-                print(unauthenticatedHosts[name]["lastAuthAttempt"])
+                #print(unauthenticatedHosts[name]["lastAuthAttempt"])
 
                 # remove device from unauthenticated hosts
                 del unauthenticatedHosts[name]
@@ -308,6 +299,7 @@ class ClientThread(Thread):
 
         # acknowledge file receipt
         self.clientSocket.sendall(f"UED {fileID} OK".encode())
+        print(f"[send] Sent acknowledgement of file '{fileID}' upload to {clientAddress}")
 
         # log file upload
         log_write("upload-log.txt", f"{name}; {datetime.now().strftime('%d %B %Y %H:%M:%S')}; {fileID}; {sum(1 for line in file)}")
@@ -332,6 +324,8 @@ class ClientThread(Thread):
                 for l in f.readlines():
                     nums.append(int(l))
         except Exception as e:
+            self.clientSocket.sendall(f"SCS {fileID} FAIL".encode())
+            print(f"[send] Sent error in compute result to {clientAddress}")
             return e
 
         auth_lock.release()
@@ -339,7 +333,7 @@ class ClientThread(Thread):
         
         # do compute
         result = None
-        print(computationOperation)
+
         if computationOperation == "SUM":
             result = sum(nums)
         elif computationOperation == "AVERAGE":
@@ -348,8 +342,6 @@ class ClientThread(Thread):
             result = max(nums)
         elif computationOperation == "MIN":
             result = min(nums)
-        
-        print(result)
 
         # send response
         if result != None:
@@ -404,23 +396,30 @@ class ClientThread(Thread):
     '''
         Edge device requests to leave the network
     '''
-    def remove_edge_device(self, deviceName):
+    def remove_edge_device(self):
         # remove device from datastructures
         auth_lock.acquire()
         io_lock.acquire()
+
+        deviceName = get_host_name_by_IP(authenticatedHosts, self.clientAddress)
+
         try:
             # update deviceID to keep number sequence continuous
             id = authenticatedHosts[deviceName]
-            updateDeviceID(id)
+            #updateDeviceID(id)
 
             # update log file
-            updateDeviceLog(id)
+            #updateDeviceLog(id)
 
             del authenticatedHosts[deviceName]
+
+            self.clientSocket.sendall(f"OUT".encode())
 
         except Exception as e:
             auth_lock.release()
             io_lock.release()
+
+            self.clientSocket.sendall(f"OUT".encode())
             
             return e
 
